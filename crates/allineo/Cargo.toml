@@ -1,12 +1,20 @@
 [package]
-name = "winmagnet"
-description = "macOS-style magnetic window edges for Windows"
+name = "allineo"
+description = "Windows snap together as you drag them, just like on a Mac."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-magnet-core.workspace = true
+allineo-core.workspace = true
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+raw-window-handle = "0.6"
+winreg = "0.56"
+miniz_oxide = "0.9"
 
 [dependencies.windows-sys]
 workspace = true
@@ -25,3 +33,7 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[build-dependencies]
+miniz_oxide = "0.9"
+winresource = "0.1.34"

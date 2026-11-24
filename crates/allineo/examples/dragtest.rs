@@ -4,7 +4,7 @@
 //!
 //!     cargo build && cargo run --example dragtest
 //!
-//! WinMagnet must already be running. This takes over the mouse for ~3s.
+//! The allineo agent must already be running (`allineo agent`). This takes over the mouse for ~3s.
 
 use std::process::{Child, Command};
 use std::ptr::{null, null_mut};
@@ -92,8 +92,8 @@ fn mouse(flags: u32) {
 }
 
 fn run_test(unaware: bool) {
-    let (mut a_proc, a) = spawn("WinMagnet Test A", 200, 300, 400, 300, unaware);
-    let (mut b_proc, b) = spawn("WinMagnet Test B", 800, 300, 400, 300, false);
+    let (mut a_proc, a) = spawn("allineo test A", 200, 300, 400, 300, unaware);
+    let (mut b_proc, b) = spawn("allineo test B", 800, 300, 400, 300, false);
     // Unaware windows get scaled, so lay the windows out in physical pixels.
     unsafe {
         let flags = SWP_NOACTIVATE | 0x0001; // NOSIZE
@@ -167,7 +167,7 @@ fn run_window(title: &str, x: i32, y: i32, w: i32, h: i32, unaware: bool) {
             DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
         });
         let instance = GetModuleHandleW(null());
-        let class = wide("WinMagnetTestWindow");
+        let class = wide("allineoTestWindow");
         let wc = WNDCLASSW {
             style: 0,
             lpfnWndProc: Some(wnd_proc),

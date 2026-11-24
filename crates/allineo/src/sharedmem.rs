@@ -1,12 +1,12 @@
 use std::ptr::null;
 
-use magnet_core::shared::{SHARED_NAME, SharedBlock, Snapshot};
+use allineo_core::shared::{SHARED_NAME, SharedBlock, Snapshot};
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Memory::{
     CreateFileMappingW, FILE_MAP_ALL_ACCESS, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile, PAGE_READWRITE, UnmapViewOfFile,
 };
 
-use crate::util::wide;
+use crate::win::wide;
 
 /// Owner side of the shared-memory block read by the hook DLL.
 pub struct SharedMemory {

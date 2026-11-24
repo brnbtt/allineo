@@ -1,14 +1,15 @@
 /// Bit flags for [`Config::flags`].
 pub mod flags {
-    /// Work-area edges of every monitor (screen edges, taskbar edge).
+    /// Edges of the desktop and the taskbar (each monitor's work area), except where two displays
+    /// meet.
     pub const SCREEN_EDGES: u32 = 1 << 0;
     /// Outer edges of other windows (dock windows side by side).
     pub const OUTER_EDGES: u32 = 1 << 1;
     /// Same-side edges of windows that sit directly above/below or beside
     /// the dragged one (line up the left edges of two stacked windows).
     pub const ALIGNED_EDGES: u32 = 1 << 2;
-    /// Full monitor bounds, so a window resists briefly when it crosses
-    /// from one display to another.
+    /// Also resist where two displays meet, so a window pauses briefly when it crosses from one
+    /// display to another. macOS doesn't do this, so it's off by default.
     pub const MONITOR_BOUNDS: u32 = 1 << 3;
     /// Also apply the magnet while resizing.
     pub const RESIZE: u32 = 1 << 4;
@@ -32,10 +33,13 @@ pub struct Config {
 }
 
 impl Config {
+    /// Tuned to match macOS 27: Apple describes it as "as the window nears the other one, it
+    /// aligns without overlapping", and for resizing "it aligns with the edge and stops". The
+    /// distances aren't published, so these are matched by feel (1 macOS point ≈ 1 px at 96 DPI).
     pub const DEFAULT: Config = Config {
-        flags: flags::SCREEN_EDGES | flags::OUTER_EDGES | flags::ALIGNED_EDGES | flags::MONITOR_BOUNDS | flags::RESIZE,
-        catch_distance: 4,
-        resistance: 18,
+        flags: flags::SCREEN_EDGES | flags::OUTER_EDGES | flags::ALIGNED_EDGES | flags::RESIZE,
+        catch_distance: 8,
+        resistance: 20,
         fast_speed: 2200,
         bypass_vk: 0x11, // VK_CONTROL
     };
@@ -66,8 +70,8 @@ mod tests {
     #[test]
     fn scaling() {
         let c = Config::DEFAULT.scaled(144);
-        assert_eq!(c.resistance, 27);
-        assert_eq!(c.catch_distance, 6);
+        assert_eq!(c.resistance, 30);
+        assert_eq!(c.catch_distance, 12);
         assert_eq!(c.flags, Config::DEFAULT.flags);
         assert_eq!(Config::DEFAULT.scaled(96), Config::DEFAULT);
     }

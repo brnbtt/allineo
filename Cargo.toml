@@ -1,14 +1,16 @@
 [workspace]
 resolver = "3"
-members = ["crates/magnet-core", "crates/magnet-hook", "crates/winmagnet"]
+members = ["crates/allineo-core", "crates/allineo-hook", "crates/allineo"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/brnbtt/allineo"
 publish = false
 
 [workspace.dependencies]
-magnet-core = { path = "crates/magnet-core" }
+allineo-core = { path = "crates/allineo-core" }
 windows-sys = "0.61"
 
 [profile.release]
@@ -16,3 +18,8 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+# The app is mostly UI and setup code: optimise it for size. The hook DLL and the engine keep
+# opt-level 3 since they run on every mouse move of a drag.
+[profile.release.package.allineo]
+opt-level = "s"

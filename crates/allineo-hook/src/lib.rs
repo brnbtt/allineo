@@ -15,10 +15,10 @@ use std::ptr::null_mut;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
-use magnet_core::Session;
-use magnet_core::engine::edges;
-use magnet_core::geom::{Insets, Rect};
-use magnet_core::shared::{SHARED_NAME, SharedBlock};
+use allineo_core::Session;
+use allineo_core::engine::edges;
+use allineo_core::geom::{Insets, Rect};
+use allineo_core::shared::{SHARED_NAME, SharedBlock};
 use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_PIN, GetModuleHandleExW,
@@ -83,18 +83,18 @@ fn pin_self() {
     unsafe {
         GetModuleHandleExW(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
-            magnet_hook_proc as *const u16,
+            allineo_hook_proc as *const u16,
             &mut module,
         );
     }
 }
 
-/// Debug builds append a trace to %TEMP%\WinMagnet\hook.log.
+/// Debug builds append a trace to %TEMP%\allineo\hook.log.
 macro_rules! trace {
     ($($arg:tt)*) => {
         if cfg!(debug_assertions) {
             use std::io::Write;
-            let path = std::env::temp_dir().join("WinMagnet").join("hook.log");
+            let path = std::env::temp_dir().join("allineo").join("hook.log");
             if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
                 let _ = writeln!(f, "[{}] {}", std::process::id(), format_args!($($arg)*));
             }
@@ -117,7 +117,7 @@ fn now_ms() -> f64 {
 /// # Safety
 /// Called by the system with a valid `CWPSTRUCT` pointer when `code >= 0`.
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn magnet_hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+pub unsafe extern "system" fn allineo_hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code >= 0 && lparam != 0 {
         // SAFETY: lparam is a CWPSTRUCT for HC_ACTION.
         let cwp = unsafe { &*(lparam as *const CWPSTRUCT) };

@@ -1,0 +1,31 @@
+name: release
+
+# Push an annotated tag like v0.1.0 (its message becomes the release notes) to build allineo.exe
+# and attach it to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # checkout fetches tags without their message; get the real annotated tag for the notes.
+      - name: Fetch tag
+        run: git fetch --force origin "refs/tags/${{ github.ref_name }}:refs/tags/${{ github.ref_name }}"
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Build
+        run: cargo build --release -p allineo
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} target/release/allineo.exe --title "allineo ${{ github.ref_name }}" --notes-from-tag --latest

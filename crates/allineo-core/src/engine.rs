@@ -114,30 +114,95 @@ impl Lines {
                 l.push(Side::Bottom, w.bottom, w.left, w.right, Rule::Adjacent);
             }
         }
-        for m in monitors {
-            if f & flags::SCREEN_EDGES != 0 {
-                l.push_area(m.work);
-            }
-            if f & flags::MONITOR_BOUNDS != 0 && (m.bounds != m.work || f & flags::SCREEN_EDGES == 0) {
-                l.push_area(m.bounds);
+        let screen = f & flags::SCREEN_EDGES != 0;
+        let between = f & flags::MONITOR_BOUNDS != 0;
+        for (i, m) in monitors.iter().enumerate() {
+            for side in SIDES {
+                // Parts of this monitor's edge that another display continues past.
+                let neighbours: Vec<(i32, i32)> = monitors
+                    .iter()
+                    .enumerate()
+                    .filter(|&(j, _)| j != i)
+                    .filter_map(|(_, o)| shared_span(&m.bounds, &o.bounds, side))
+                    .collect();
+                if screen {
+                    let mut spans = vec![span(&m.work, side)];
+                    // A taskbar edge is a real edge even next to another display; only the bare
+                    // monitor edge is open.
+                    if edge(&m.work, side) == edge(&m.bounds, side) {
+                        for &cut in &neighbours {
+                            subtract(&mut spans, cut);
+                        }
+                    }
+                    for (lo, hi) in spans {
+                        l.push(side, edge(&m.work, side), lo, hi, Rule::Overlap);
+                    }
+                }
+                if between {
+                    for &(lo, hi) in &neighbours {
+                        l.push(side, edge(&m.bounds, side), lo, hi, Rule::Overlap);
+                    }
+                }
             }
         }
         l
     }
 
     fn push(&mut self, side: Side, pos: i32, lo: i32, hi: i32, rule: Rule) {
-        self.by_side[side as usize].push(Line { pos, lo, hi, rule });
-    }
-
-    fn push_area(&mut self, a: Rect) {
-        if a.is_empty() {
-            return;
+        if hi > lo {
+            self.by_side[side as usize].push(Line { pos, lo, hi, rule });
         }
-        self.push(Side::Left, a.left, a.top, a.bottom, Rule::Overlap);
-        self.push(Side::Right, a.right, a.top, a.bottom, Rule::Overlap);
-        self.push(Side::Top, a.top, a.left, a.right, Rule::Overlap);
-        self.push(Side::Bottom, a.bottom, a.left, a.right, Rule::Overlap);
     }
+}
+
+const fn edge(r: &Rect, side: Side) -> i32 {
+    match side {
+        Side::Left => r.left,
+        Side::Top => r.top,
+        Side::Right => r.right,
+        Side::Bottom => r.bottom,
+    }
+}
+
+/// Extent of `r` along the axis perpendicular to `side`.
+const fn span(r: &Rect, side: Side) -> (i32, i32) {
+    match side {
+        Side::Left | Side::Right => (r.top, r.bottom),
+        Side::Top | Side::Bottom => (r.left, r.right),
+    }
+}
+
+/// The stretch of `a`'s `side` edge that `b` sits directly against, if any.
+fn shared_span(a: &Rect, b: &Rect, side: Side) -> Option<(i32, i32)> {
+    let opposite = match side {
+        Side::Left => Side::Right,
+        Side::Top => Side::Bottom,
+        Side::Right => Side::Left,
+        Side::Bottom => Side::Top,
+    };
+    if edge(b, opposite) != edge(a, side) {
+        return None;
+    }
+    let ((a0, a1), (b0, b1)) = (span(a, side), span(b, side));
+    let (lo, hi) = (a0.max(b0), a1.min(b1));
+    (hi > lo).then_some((lo, hi))
+}
+
+fn subtract(spans: &mut Vec<(i32, i32)>, (c0, c1): (i32, i32)) {
+    let mut out = Vec::with_capacity(spans.len() + 1);
+    for &(a, b) in spans.iter() {
+        if c1 <= a || c0 >= b {
+            out.push((a, b));
+            continue;
+        }
+        if c0 > a {
+            out.push((a, c0));
+        }
+        if c1 < b {
+            out.push((c1, b));
+        }
+    }
+    *spans = out;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -495,6 +560,31 @@ mod tests {
             assert_eq!(r.left, x);
             t += 16.0;
         }
+    }
+
+    #[test]
+    fn crossing_between_displays_is_free_by_default() {
+        let left = MonitorRects { bounds: Rect::new(0, 0, 1920, 1080), work: Rect::new(0, 0, 1920, 1040) };
+        let right = MonitorRects { bounds: Rect::new(1920, 0, 3840, 1080), work: Rect::new(1920, 0, 3840, 1040) };
+        let mut s = Session::new(&[], &[left, right], cfg());
+        for (p, a) in drag_x(&mut s, at(1500, 100, 300, 200), 1800, 2, 16.0) {
+            assert_eq!(p, a, "no resistance at the shared edge");
+        }
+
+        let between = Config { flags: cfg().flags | flags::MONITOR_BOUNDS, ..cfg() };
+        let mut s = Session::new(&[], &[left, right], between);
+        let trace = drag_x(&mut s, at(1500, 100, 300, 200), 1800, 2, 16.0);
+        assert!(trace.iter().any(|&(p, a)| p > 1620 && a == 1620), "opt-in resistance at the shared edge");
+    }
+
+    #[test]
+    fn partially_shared_display_edge_still_snaps_beside_the_neighbour() {
+        // The right display is shorter: below it, the left display's right edge is a real edge.
+        let left = MonitorRects { bounds: Rect::new(0, 0, 1920, 1080), work: Rect::new(0, 0, 1920, 1080) };
+        let right = MonitorRects { bounds: Rect::new(1920, 0, 3200, 720), work: Rect::new(1920, 0, 3200, 720) };
+        let mut s = Session::new(&[], &[left, right], cfg());
+        let low = drag_x(&mut s, at(1500, 800, 300, 200), 1700, 2, 16.0);
+        assert!(low.iter().any(|&(p, a)| p > 1620 && a == 1620));
     }
 
     #[test]

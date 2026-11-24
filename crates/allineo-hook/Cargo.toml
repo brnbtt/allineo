@@ -1,5 +1,5 @@
 [package]
-name = "magnet-hook"
+name = "allineo-hook"
 description = "Tiny hook DLL loaded into the process of the window being dragged"
 version.workspace = true
 edition.workspace = true
@@ -9,7 +9,7 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-magnet-core.workspace = true
+allineo-core.workspace = true
 
 [dependencies.windows-sys]
 workspace = true

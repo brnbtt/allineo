@@ -1,4 +1,4 @@
-//! Platform-independent core of WinMagnet.
+//! Platform-independent core of allineo.
 //!
 //! Everything in here is plain Rust so it can be unit tested on any machine:
 //! the snapping engine, the geometry types and the `#[repr(C)]` layout of the

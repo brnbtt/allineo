@@ -3,8 +3,8 @@
 
 use std::ptr::null_mut;
 
-use magnet_core::shared::{MAX_WINDOWS, MonitorRects, Snapshot};
-use magnet_core::{Config, Insets, Rect};
+use allineo_core::shared::{MAX_WINDOWS, MonitorRects, Snapshot};
+use allineo_core::{Config, Insets, Rect};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -17,7 +17,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 use windows_sys::core::BOOL;
 
-use crate::util::{from_win, rect_zero};
+use crate::win::{from_win, rect_zero};
 
 const MIN_SIZE: i32 = 40;
 const IGNORED_CLASSES: &[&str] = &["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"];

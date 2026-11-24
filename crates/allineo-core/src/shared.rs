@@ -12,7 +12,7 @@ use core::sync::atomic::{AtomicU32, Ordering, fence};
 use crate::config::Config;
 use crate::geom::{Insets, Rect};
 
-pub const SHARED_NAME: &str = "Local\\WinMagnet.Shared.v1";
+pub const SHARED_NAME: &str = "Local\\allineo.shared.v1";
 pub const MAGIC: u32 = u32::from_le_bytes(*b"WMAG");
 pub const VERSION: u32 = 1;
 pub const MAX_WINDOWS: usize = 256;

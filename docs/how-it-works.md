@@ -31,8 +31,10 @@ Snap targets, per edge of the dragged window:
 - **between displays** (config file only, `between_displays`): resist at shared display edges
   too.
 
-Only windows you can actually see count: minimised, cloaked (other virtual desktops), tool and
-fully covered windows are skipped.
+Only windows you can actually see count: minimised, cloaked (other virtual desktops) and tool
+windows are skipped, and so is any window completely covered by another one above it, snappable or
+not (a full-screen video or game hides everything behind it). Click-through and layered windows
+(overlays, screen dimmers) don't count as covering anything.
 
 The Windows move/size loop computes every proposed rect from the pointer offset relative to the
 drag start, not from the rect returned last time. So the engine is fed the *unmodified* proposal on
@@ -64,6 +66,12 @@ MOVESIZEEND → UnhookWindowsHookEx             WM_EXITSIZEMOVE → unsubclass
 - **The DLL pins itself** once it has subclassed a window, so it can never be unloaded underneath
   a live subclass procedure. That's also why it's unpacked to `%TEMP%\allineo` under a name derived
   from its contents rather than kept in the install folder.
+- **Shared memory outlives the agent.** Each hook keeps its handle to the shared section open for
+  as long as its app runs. Windows drops a section's *name* when its last handle closes (a mapped
+  view isn't enough), so without that, a restarted agent would create a new section the hooks in
+  already-running apps never see, and snapping would silently stop in those apps. A re-opened
+  section also keeps counting sessions instead of restarting at 0. Because old hooks keep reading
+  the section across updates, `SHARED_NAME` and `VERSION` must change together with its layout.
 - **DPI:** the agent is per-monitor-v2 aware and works in physical pixels. For DPI-unaware and
   system-aware apps the hook maps their scaled rects to physical pixels and back using the window
   rect read in both coordinate spaces at the start of the drag
@@ -105,14 +113,20 @@ cargo test                     # engine, config and icon tests
 sharing the outer one would deadlock on cargo's build lock) and embeds the DLL, plus the icons
 drawn in `src/icon.rs`.
 
-End-to-end check with synthetic mouse input (takes over the mouse for ~3 s, needs the agent
-running):
+End-to-end checks with synthetic mouse input (each takes over the mouse for a few seconds and
+needs the agent running):
 
 ```powershell
 cargo build --workspace --all-targets         # --examples alone skips the app and the DLL
 .\target\debug\examples\dragtest.exe          # drags one test window into another
 .\target\debug\examples\dragtest.exe unaware  # same, with a DPI-unaware window
+.\target\debug\examples\dragtest.exe chrome   # a throwaway Chrome (temporary profile), by its title bar
+.\target\debug\examples\dragtest.exe chrome-tab   # same, dragged by its tab
 ```
+
+`docs/images/demo.gif` is recorded with `.\target\debug\examples\demo.exe out.mp4` (needs ffmpeg),
+then converted with ffmpeg's palette filters (720 px wide, 25 fps, 96 colours, Bayer dithering).
+It puts up a full-screen backdrop, so nothing else on screen ends up in the recording.
 
 Debug builds log to `%TEMP%\allineo\agent.log` and `%TEMP%\allineo\hook.log`.
 
@@ -128,7 +142,8 @@ crates/
   allineo-core/   snapping engine, geometry, config, shared-memory layout (no dependencies)
   allineo-hook/   cdylib loaded into the dragged window's process
   allineo/        the app: settings window, agent, tray, install
-    examples/dragtest.rs   end-to-end test with synthetic mouse input
+    examples/dragtest.rs   end-to-end tests with synthetic mouse input
+    examples/demo.rs       records the README demo
 ```
 
 ## Not done yet

@@ -5,8 +5,8 @@
 <h1 align="center">allineo</h1>
 
 <p align="center">
-  <b>Windows snap together as you drag them, just like on a Mac.</b><br>
-  Line windows up edge to edge without lining them up by hand.
+  <b>Windows that snap together, just like on a Mac.</b><br>
+  Drag a window next to another and it lines up perfectly, without you lining it up.
 </p>
 
 <p align="center">
@@ -19,10 +19,14 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-333333?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <img src="docs/images/demo.gif" width="620" alt="A window dragged next to another snaps flush, lines up with its top, and stops level with its bottom when resized">
+</p>
+
 On a Mac, a window you drag toward another one *aligns without overlapping*: it stops flush against
 the edge, holds there for a moment, and lets go if you keep pushing. *allineo* (Italian for "I line
-up") brings that feeling to Windows. Install it once and forget about it: there's nothing to learn,
-your windows just behave.
+up") brings that same feeling to Windows. Install it once and forget about it: there's nothing to
+learn, your windows just behave.
 
 ## Install
 
@@ -35,22 +39,29 @@ your windows just behave.
 > allineo isn't code-signed yet, so Windows may show **"Windows protected your PC"** the first
 > time. Click **More info → Run anyway**. The app is open source, and you can read every line of it here.
 
-## How it feels
+## How to use it
 
-- **Drag a window toward another one.** As the edges meet, it snaps flush, with no gap and no
-  overlap.
-- **Keep pushing** and it holds for a moment, then lets go and follows your pointer again.
-- **Pull back** and it lets go straight away.
-- **Fling it** and it flies straight past; only deliberate moves snap.
-- **Resize a window** and its edge stops at its neighbour's, so side-by-side windows end up the
-  same height.
-- **Windows stacked on top of each other** line up their sides, and windows side by side line up
-  their tops.
-- The edges of the screen and the taskbar work the same way. Moving a window to another display
-  is never in the way.
-- Hold **Ctrl** while you drag to move a window freely.
+### 1. Drag a window toward another
 
-Windows' own Snap (drag to the top to maximise, to a side for half the screen) keeps working.
+As the edges meet, the window snaps flush against its neighbour: no gap, no overlap. Screen edges
+and the taskbar work the same way.
+
+### 2. Keep pushing, or pull back
+
+Keep pushing and it holds for a moment, then lets go and follows your pointer again. Pull back and
+it lets go straight away. Fling a window quickly and it flies straight past: only deliberate moves
+snap.
+
+### 3. Line them up
+
+Slide a window along its neighbour and their tops (or sides) line up. Resize it and its edge stops
+level with the window next to it, so side-by-side windows end up exactly the same height.
+
+> [!TIP]
+> Hold **Ctrl** while you drag to move a window freely, without snapping.
+
+Windows' own Snap (drag to the top to maximise, to a side for half the screen) keeps working as
+usual.
 
 ## Make it yours
 
@@ -64,15 +75,17 @@ macOS defaults.
 
 ## Why allineo
 
-- **The Mac feel, not a copy of AquaSnap.** Edges stop and hold; they don't jump at your window
+- **The Mac feel, not a copy of AquaSnap.** Edges stop and hold; they don't pull your window in
   from across the screen.
-- **Truly flush.** Windows 10 and 11 windows have invisible borders; allineo ignores them, so
-  there are no 7-pixel gaps.
-- **Light.** About 2 MB of memory in the background, and it does nothing at all until you drag a
-  window.
+- **Truly flush.** Windows 10 and 11 windows have invisible borders around them; allineo ignores
+  them, so there are no 7-pixel gaps.
+- **Only what you can see.** Windows hidden behind others, minimised or on another desktop are
+  never in the way.
+- **Light.** About 2 MB of memory, and it does nothing at all until you drag a window.
 - **Only touches what you drag.** allineo helps the one window you're moving, only while you move
-  it, instead of loading into every app on your PC.
-- **Sharp on any display.** Works with mixed scaling (100%, 150%, 200%…) and older apps.
+  it, instead of loading itself into every app on your PC.
+- **Sharp on any display.** Works with any scaling (100%, 150%, 200%…), multiple monitors and older
+  apps.
 - **Private.** No account, no internet, no telemetry.
 
 ## Questions

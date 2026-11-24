@@ -59,10 +59,14 @@ fn shared() -> Option<&'static SharedBlock> {
                 return None;
             }
             let view = MapViewOfFile(h, FILE_MAP_READ, 0, 0, size_of::<SharedBlock>());
-            CloseHandle(h);
             if view.Value.is_null() {
+                CloseHandle(h);
                 return None;
             }
+            // The handle is deliberately kept open: Windows drops a section's *name* once its last
+            // handle closes (a mapped view isn't enough), and the next agent would then create a
+            // fresh section this process never sees, silently ending snapping here after any
+            // agent restart.
             p = match SHARED.compare_exchange(null_mut(), view.Value.cast(), Ordering::AcqRel, Ordering::Acquire) {
                 Ok(_) => view.Value.cast(),
                 Err(existing) => existing, // another thread won; leak our view
@@ -137,9 +141,7 @@ fn maybe_subclass(hwnd: HWND) {
     pin_self();
     // SAFETY: we're on the window's own thread (hooks run in its context);
     // SetWindowSubclass is idempotent for the same proc/id pair.
-    unsafe {
-        SetWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID, 0);
-    }
+    unsafe { SetWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID, 0) };
 }
 
 unsafe extern "system" fn subclass_proc(
@@ -199,6 +201,7 @@ fn snap(hwnd: HWND, msg: u32, wparam: WPARAM, rect: &mut RECT) {
             "session {session_id} for {hwnd:?}: {} windows, identity {} scale {:.3}x{:.3}",
             snapshot.window_count, dpi.identity, dpi.sx, dpi.sy
         );
+        trace!("  windows {:?} insets {:?}", snapshot.windows(), snapshot.insets);
         *guard = Some(Active {
             hwnd: hwnd as usize,
             session_id,

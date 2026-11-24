@@ -12,6 +12,9 @@ use core::sync::atomic::{AtomicU32, Ordering, fence};
 use crate::config::Config;
 use crate::geom::{Insets, Rect};
 
+/// Hooks keep this section open for as long as their app runs, across agent restarts and
+/// updates. Bump `VERSION` **and** the name whenever the layout changes, so an old hook in a
+/// long-running app never reads a newer layout.
 pub const SHARED_NAME: &str = "Local\\allineo.shared.v1";
 pub const MAGIC: u32 = u32::from_le_bytes(*b"WMAG");
 pub const VERSION: u32 = 1;
@@ -95,12 +98,18 @@ pub struct SharedBlock {
 }
 
 impl SharedBlock {
-    /// Initialise a freshly mapped, zeroed block.
+    /// Initialise the block. Apps that used the hook keep the section (and its contents) alive
+    /// across agent restarts, so an existing block keeps counting sessions from where it was:
+    /// restarting at 0 would let a hook mistake a new drag for an old one.
     ///
     /// # Safety
     /// `this` must point to a writable mapping of at least `size_of::<SharedBlock>()` bytes.
     pub unsafe fn init(this: *mut SharedBlock) {
         unsafe {
+            if (*this).is_valid() {
+                (*this).enabled.store(1, Ordering::Release);
+                return;
+            }
             addr_of_mut!((*this).magic).write_volatile(MAGIC);
             addr_of_mut!((*this).version).write_volatile(VERSION);
             (*this).enabled.store(1, Ordering::Release);
@@ -201,5 +210,10 @@ mod tests {
 
         let id2 = unsafe { SharedBlock::publish(block, &snap) };
         assert_ne!(id, id2);
+
+        // An agent restart re-initialises the (still alive) block: sessions keep counting.
+        unsafe { SharedBlock::init(block) };
+        let id3 = unsafe { SharedBlock::publish(block, &snap) };
+        assert!(id3 > id2);
     }
 }

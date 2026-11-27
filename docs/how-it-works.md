@@ -8,17 +8,24 @@ engine (`crates/allineo-core/src/engine.rs`) implements:
 
 | | AquaMagnet | allineo (macOS-like) |
 |---|---|---|
-| Approaching an edge | Pulled in from N px away | Moves freely until it gets close (8 px catch zone), then lands exactly on it |
-| Pushing past it | Released after N px | **Held** until the pointer is `hold` px past the edge, then the window jumps back under the pointer |
+| Approaching an edge | Pulled in from N px away | Moves freely until it gets close (6 px catch zone), then lands exactly on it |
+| Pushing past it | Released after N px | **Held** until the pointer is `hold` px past the edge (12 px when placing a window slowly, less the faster you push), then the window jumps back under the pointer |
 | Pulling back | Held for N px | Released immediately |
-| Fast flicks | Optional threshold | Pass straight through (above 2200 px/s) |
+| Quick moves | Optional threshold | Pass straight through (above 1500 px/s) |
 | Crossing to another display | Resists | Free, like on a Mac |
 | Invisible resize borders | Gaps on Win10/11 | Uses the DWM frame, so windows sit flush |
 
 Apple describes the behaviour ("as the window nears the other one, it aligns without overlapping",
-and when resizing "it aligns with the edge and stops") but doesn't publish the distances. The
-defaults (`Config::DEFAULT`) are matched by feel, treating one macOS point as one pixel at 100%
-scaling, and are scaled per monitor.
+and when resizing "it aligns with the edge and stops") but doesn't publish the distances. Mac users
+describe it as *"a subtle snap, it's not a hard stick. If you're overly aggressive with the mouse
+cursor it will go beyond the edge"*. So the hold is light and fades with speed: `hold × (1 − (v /
+1500 px/s)²)`. Placing a window slowly gets a firm stop, an ordinary move only a slight bump, and a
+quick move none, which also keeps long drags from stuttering over every edge they cross. Speed is
+measured over the last 60 ms, since mouse events can arrive every millisecond.
+
+The defaults (`Config::DEFAULT`) treat one macOS point as one pixel at 100% scaling, and are scaled
+per monitor. `config.json` records which set of defaults it was written with (`defaults`), so an
+update that changes the built-in feel also moves untouched old values to the new ones.
 
 Snap targets, per edge of the dragged window:
 

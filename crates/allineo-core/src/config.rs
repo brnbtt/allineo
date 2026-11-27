@@ -24,23 +24,28 @@ pub struct Config {
     /// How close an edge must get to a line before it is caught.
     pub catch_distance: i32,
     /// How far the cursor has to keep pushing past a line before the window
-    /// breaks free. This is the macOS-style "detent".
+    /// breaks free when moving slowly (the macOS-style "detent"). Faster
+    /// pushes break free sooner.
     pub resistance: i32,
-    /// Movements faster than this (px/s) never get caught. 0 disables it.
+    /// Movements faster than this (px/s) never get caught, and the hold fades
+    /// towards zero as the speed approaches it. 0 disables both.
     pub fast_speed: i32,
     /// Virtual-key code that suspends snapping while held. 0 = none.
     pub bypass_vk: u32,
 }
 
 impl Config {
-    /// Tuned to match macOS 27: Apple describes it as "as the window nears the other one, it
-    /// aligns without overlapping", and for resizing "it aligns with the edge and stops". The
-    /// distances aren't published, so these are matched by feel (1 macOS point ≈ 1 px at 96 DPI).
+    /// Tuned to match macOS. Apple describes it as "as the window nears the other one, it aligns
+    /// without overlapping", and for resizing "it aligns with the edge and stops", but doesn't
+    /// publish the distances. Mac users describe it as "a subtle snap, not a hard stick: if you're
+    /// overly aggressive with the mouse it will go beyond the edge", hence a short catch, a light
+    /// hold that fades with speed, and quick moves passing straight through. One macOS point is
+    /// about one pixel at 100% scaling.
     pub const DEFAULT: Config = Config {
         flags: flags::SCREEN_EDGES | flags::OUTER_EDGES | flags::ALIGNED_EDGES | flags::RESIZE,
-        catch_distance: 8,
-        resistance: 20,
-        fast_speed: 2200,
+        catch_distance: 6,
+        resistance: 12,
+        fast_speed: 1500,
         bypass_vk: 0x11, // VK_CONTROL
     };
 
@@ -70,8 +75,8 @@ mod tests {
     #[test]
     fn scaling() {
         let c = Config::DEFAULT.scaled(144);
-        assert_eq!(c.resistance, 30);
-        assert_eq!(c.catch_distance, 12);
+        assert_eq!(c.resistance, 18);
+        assert_eq!(c.catch_distance, 9);
         assert_eq!(c.flags, Config::DEFAULT.flags);
         assert_eq!(Config::DEFAULT.scaled(96), Config::DEFAULT);
     }

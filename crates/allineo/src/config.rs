@@ -24,10 +24,18 @@ pub struct Config {
     pub ctrl_bypass: bool,
     pub start_with_windows: bool,
     pub tray_icon: bool,
+    /// Which set of built-in defaults this file was written with; see [`Config::normalized`].
+    /// Files from before this field existed read as 0.
+    #[serde(default)]
+    pub defaults: u32,
 }
 
 /// What the − / + buttons step through for "hold".
-pub const HOLD_STEPS: [u32; 10] = [6, 10, 14, 20, 26, 32, 40, 50, 60, 80];
+pub const HOLD_STEPS: [u32; 10] = [6, 8, 12, 16, 20, 26, 32, 40, 50, 60];
+
+/// Bumped whenever the built-in feel changes. 1: hold 20, reach 8 (v0.1.0). 2: hold 12, reach 6,
+/// fading with speed.
+const DEFAULTS: u32 = 2;
 
 impl Default for Config {
     fn default() -> Self {
@@ -45,6 +53,7 @@ impl Default for Config {
             ctrl_bypass: e.bypass_vk != 0,
             start_with_windows: true,
             tray_icon: true,
+            defaults: DEFAULTS,
         }
     }
 }
@@ -65,6 +74,14 @@ impl Config {
     }
 
     pub fn normalized(mut self) -> Self {
+        // Files from before a change of the built-in feel: move untouched values to the new ones,
+        // so updating brings the new feel without anyone opening the settings. Values someone
+        // picked themselves are kept.
+        if self.defaults < 2 && (self.hold, self.reach) == (20, 8) {
+            let d = Config::default();
+            (self.hold, self.reach) = (d.hold, d.reach);
+        }
+        self.defaults = DEFAULTS;
         self.hold = self.hold.clamp(HOLD_STEPS[0], 200);
         self.reach = self.reach.clamp(1, 40).min(self.hold.saturating_sub(1).max(1));
         self
@@ -150,10 +167,29 @@ mod tests {
     fn hold_steps() {
         let mut c = Config::default();
         c.hold_up();
-        assert_eq!(c.hold, 26);
+        assert_eq!(c.hold, 16);
         c.hold = 6;
         c.hold_down();
         assert_eq!(c.hold, 6);
         assert!(c.reach < c.hold);
+    }
+
+    #[test]
+    fn v0_1_files_get_the_new_feel() {
+        // As written by v0.1.0's installer: the old defaults, no `defaults` field.
+        let old = r#"{"enabled": true, "hold": 20, "reach": 8, "fast_flicks_pass": true, "ctrl_bypass": true}"#;
+        let c = serde_json::from_str::<Config>(old).unwrap().normalized();
+        assert_eq!((c.hold, c.reach), (Config::default().hold, Config::default().reach));
+        assert!(c.feels_like_mac());
+
+        // Someone who picked their own hold keeps it.
+        let picked = r#"{"hold": 40, "reach": 8}"#;
+        let c = serde_json::from_str::<Config>(picked).unwrap().normalized();
+        assert_eq!((c.hold, c.reach), (40, 8));
+
+        // Once upgraded, choosing 20 again sticks.
+        let chosen = r#"{"hold": 20, "reach": 8, "defaults": 2}"#;
+        let c = serde_json::from_str::<Config>(chosen).unwrap().normalized();
+        assert_eq!(c.hold, 20);
     }
 }

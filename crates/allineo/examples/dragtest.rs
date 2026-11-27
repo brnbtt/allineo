@@ -215,11 +215,13 @@ fn run_test(unaware: bool, chrome: bool, by_tab: bool, existing: Option<HWND>) {
     mouse(MOUSEEVENTF_LEFTDOWN);
     sleep(Duration::from_millis(150));
 
+    // ALLINEO_DRAG_STEP: pixels per 12 ms step (default 2, a slow, deliberate drag).
+    let step: i32 = std::env::var("ALLINEO_DRAG_STEP").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
     let mut trace = Vec::new();
     let total = gap + 80;
     let mut dx = 0;
     while dx < total {
-        dx += 2;
+        dx += step;
         unsafe { SetCursorPos(sx + dx, sy) };
         sleep(Duration::from_millis(12));
         trace.push((dx, frame(a).right));
@@ -238,10 +240,10 @@ fn run_test(unaware: bool, chrome: bool, by_tab: bool, existing: Option<HWND>) {
     println!(
         "\nheld at B.left for {} samples ({}px of cursor travel past contact); followed cursor afterwards: {}",
         held.len(),
-        held.len() * 2,
+        held.len() as i32 * step,
         free_after
     );
-    let ok = held.len() >= 5 && free_after;
+    let ok = held.len() as i32 * step >= 10 && free_after;
     println!("{}", if ok { "PASS" } else { "FAIL" });
 
     if existing.is_some() {

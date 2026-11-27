@@ -7,15 +7,20 @@
 //! * the window moves freely until one of its edges actually reaches a line
 //!   (a small `catch_distance` lets slow approaches land exactly on it);
 //! * it then stays put while the cursor keeps pushing, until the cursor has
-//!   travelled `resistance` pixels past the line, at which point the window
+//!   travelled the hold distance past the line, at which point the window
 //!   jumps back under the cursor and continues;
+//! * the hold depends on speed: `resistance` when placing a window slowly,
+//!   less the faster you push, so a normal-speed move only feels a slight
+//!   bump ("a subtle snap, not a hard stick");
 //! * pulling back the way you came releases it immediately;
-//! * fast flicks pass straight through.
+//! * moves faster than `fast_speed` pass straight through.
 //!
 //! The Windows move/size loop computes every proposed rect from the cursor
 //! offset relative to the drag start, not from the rect we returned last
 //! time, so the engine is fed the *unmodified* proposal on every event and
 //! only has to remember which line (if any) it is currently holding.
+
+use std::collections::VecDeque;
 
 use crate::config::{Config, flags};
 use crate::geom::Rect;
@@ -224,8 +229,8 @@ struct Lock {
     target: i32,
     /// Direction of travel when the line was hit (+1 / -1).
     dir: i32,
-    /// Proposed value past which the window breaks free.
-    release_at: i32,
+    /// How far past the line the pointer already was when it was caught (fast approaches).
+    overshoot: i32,
 }
 
 /// Detent state machine for one scalar coordinate.
@@ -242,13 +247,15 @@ impl Detent {
         v
     }
 
-    fn step(&mut self, proposed: i32, cands: &[Candidate], cfg: &Config, allow_new: bool) -> i32 {
+    /// `hold` is how far the pointer may push past a caught line before the window breaks free;
+    /// it shrinks as the pointer speeds up, so pushing harder breaks free sooner.
+    fn step(&mut self, proposed: i32, cands: &[Candidate], cfg: &Config, allow_new: bool, hold: i32) -> i32 {
         let prev = self.prev.replace(proposed);
 
         if let Some(l) = self.lock {
             let still_applies = cands.iter().any(|c| c.key == l.key);
             let pushed = (proposed - l.target) * l.dir;
-            let broke_through = (proposed - l.release_at) * l.dir > 0;
+            let broke_through = pushed - l.overshoot > hold;
             if still_applies && pushed >= -cfg.catch_distance && !broke_through {
                 return l.target;
             }
@@ -283,12 +290,7 @@ impl Detent {
         match best {
             Some((_, c)) => {
                 let overshoot = ((proposed - c.target) * dir).max(0);
-                self.lock = Some(Lock {
-                    key: c.key,
-                    target: c.target,
-                    dir,
-                    release_at: c.target + dir * (cfg.resistance + overshoot),
-                });
+                self.lock = Some(Lock { key: c.key, target: c.target, dir, overshoot });
                 c.target
             }
             None => proposed,
@@ -296,22 +298,30 @@ impl Detent {
     }
 }
 
-/// Smoothed cursor speed in px/s.
+/// How far back the speed is measured. Mouse events can arrive every millisecond, so speed from
+/// consecutive events alone would be noise.
+const SPEED_WINDOW_MS: f64 = 60.0;
+
+/// Pointer speed in px/s over the last [`SPEED_WINDOW_MS`].
 #[derive(Debug, Default)]
 struct Speed {
-    last: Option<(i32, i32, f64)>,
+    samples: VecDeque<(i32, i32, f64)>,
     value: f64,
 }
 
 impl Speed {
     fn update(&mut self, x: i32, y: i32, now_ms: f64) -> f64 {
-        if let Some((lx, ly, lt)) = self.last {
-            let dt = (now_ms - lt).max(1.0);
-            let (dx, dy) = ((x - lx) as f64, (y - ly) as f64);
-            let instant = (dx * dx + dy * dy).sqrt() * 1000.0 / dt;
-            self.value = self.value * 0.5 + instant * 0.5;
+        self.samples.push_back((x, y, now_ms));
+        // Keep the newest sample that is at least a window old as the reference point.
+        while self.samples.len() > 2 && now_ms - self.samples[1].2 >= SPEED_WINDOW_MS {
+            self.samples.pop_front();
         }
-        self.last = Some((x, y, now_ms));
+        let (ox, oy, ot) = self.samples[0];
+        let dt = now_ms - ot;
+        if dt >= 1.0 {
+            let (dx, dy) = ((x - ox) as f64, (y - oy) as f64);
+            self.value = (dx * dx + dy * dy).sqrt() * 1000.0 / dt;
+        }
         self.value
     }
 }
@@ -345,9 +355,19 @@ impl Session {
         Self::new(s.windows(), s.monitors(), s.config)
     }
 
-    fn is_fast(&mut self, x: i32, y: i32, now_ms: f64) -> bool {
+    /// Updates the pointer speed; returns (too fast to catch anything new, current hold).
+    ///
+    /// macOS snapping is "a subtle snap, not a hard stick": placing a window slowly gets the full
+    /// hold, a normal-speed move only a slight bump, and a quick move goes straight past.
+    fn pace(&mut self, x: i32, y: i32, now_ms: f64) -> (bool, i32) {
         let v = self.speed.update(x, y, now_ms);
-        self.cfg.fast_speed > 0 && v > self.cfg.fast_speed as f64
+        let limit = self.cfg.fast_speed as f64;
+        if limit <= 0.0 {
+            return (false, self.cfg.resistance);
+        }
+        let ratio = (v / limit).min(1.0);
+        let hold = (self.cfg.resistance as f64 * (1.0 - ratio * ratio)).round() as i32;
+        (v > limit, hold)
     }
 
     /// Collect the lines that currently apply, converted to values of the
@@ -367,7 +387,7 @@ impl Session {
     /// `proposed` is the visible frame the system wants to move the window
     /// to. Returns the frame to use instead.
     pub fn on_move(&mut self, proposed: Rect, now_ms: f64, bypass: bool) -> Rect {
-        let fast = self.is_fast(proposed.left, proposed.top, now_ms);
+        let (fast, hold) = self.pace(proposed.left, proposed.top, now_ms);
         if bypass {
             self.x.passthrough(proposed.left);
             self.y.passthrough(proposed.top);
@@ -376,10 +396,10 @@ impl Session {
         let (w, h) = (proposed.width(), proposed.height());
 
         self.collect(&[(Side::Top, 0), (Side::Bottom, -h)], proposed.left, proposed.right);
-        let y = self.y.step(proposed.top, &self.buf, &self.cfg, !fast);
+        let y = self.y.step(proposed.top, &self.buf, &self.cfg, !fast, hold);
 
         self.collect(&[(Side::Left, 0), (Side::Right, -w)], y, y + h);
-        let x = self.x.step(proposed.left, &self.buf, &self.cfg, !fast);
+        let x = self.x.step(proposed.left, &self.buf, &self.cfg, !fast, hold);
 
         Rect::new(x, y, x + w, y + h)
     }
@@ -388,7 +408,7 @@ impl Session {
     pub fn on_size(&mut self, proposed: Rect, moving: u8, now_ms: f64, bypass: bool) -> Rect {
         let px = if moving & edges::LEFT != 0 { proposed.left } else { proposed.right };
         let py = if moving & edges::TOP != 0 { proposed.top } else { proposed.bottom };
-        let fast = self.is_fast(px, py, now_ms);
+        let (fast, hold) = self.pace(px, py, now_ms);
         let skip = bypass || self.cfg.flags & flags::RESIZE == 0;
 
         let mut out = proposed;
@@ -406,7 +426,7 @@ impl Session {
                 self.sides[side as usize].passthrough(value)
             } else {
                 self.collect(&[(side, 0)], lo, hi);
-                self.sides[side as usize].step(value, &self.buf, &self.cfg, !fast)
+                self.sides[side as usize].step(value, &self.buf, &self.cfg, !fast, hold)
             };
             match side {
                 Side::Left => out.left = v,
@@ -499,6 +519,20 @@ mod tests {
         assert!(back.iter().filter(|(p, _)| *p >= 1616).all(|(_, a)| *a == 1620));
         // ... and follows the cursor as soon as it's back on the inside.
         assert!(back.iter().filter(|(p, _)| *p < 1616).all(|(p, a)| p == a));
+    }
+
+    #[test]
+    fn hold_fades_with_speed() {
+        // How far past the screen edge (at 1620) the pointer got while the window was still held.
+        let held_for = |step: i32, ms: f64| {
+            let mut s = Session::new(&[], &[monitor()], cfg());
+            let trace = drag_x(&mut s, at(1500, 100, 300, 200), 1700, step, ms);
+            trace.iter().filter(|&&(p, a)| p > 1620 && a == 1620).map(|&(p, _)| p - 1620).max().unwrap_or(0)
+        };
+        let slow = held_for(2, 16.0); // 125 px/s: placing a window
+        let medium = held_for(16, 16.0); // 1000 px/s: an ordinary move
+        assert_eq!(slow, 18, "full hold when slow");
+        assert!(medium > 0 && medium < slow, "a lighter bump at normal speed ({medium} px)");
     }
 
     #[test]

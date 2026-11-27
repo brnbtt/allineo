@@ -139,7 +139,7 @@ pub fn round_button(ui: &mut Ui, glyph: &str, tip: &str) -> Response {
     .on_hover_text(tip)
 }
 
-/// `−  20 px  +`. Returns which button was clicked as (minus, plus).
+/// `−  12 px  +`. Returns which button was clicked as (minus, plus).
 pub fn stepper(ui: &mut Ui, value: &str, less: &str, more: &str) -> (bool, bool) {
     // Inside right-aligned layouts egui adds widgets right to left; keep "− value +" reading order.
     let reversed = ui.layout().prefer_right_to_left();

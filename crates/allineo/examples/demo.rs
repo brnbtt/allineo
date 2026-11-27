@@ -380,7 +380,7 @@ fn direct(out: &str) {
     pause(0.25);
     mouse(MOUSEEVENTF_LEFTDOWN);
     pause(0.15);
-    let push = 26;
+    let push = 12;
     p = glide(p, (p.0 + (fb.left - fa.right) + push, p.1), 1.4);
     pause(0.6);
     // 2. Slide it up: its top lines up with the neighbour's.
@@ -396,7 +396,7 @@ fn direct(out: &str) {
     pause(0.2);
     mouse(MOUSEEVENTF_LEFTDOWN);
     pause(0.1);
-    p = glide(p, (p.0, p.1 + (fb.bottom - fa.bottom) + 22), 0.9);
+    p = glide(p, (p.0, p.1 + (fb.bottom - fa.bottom) + 12), 0.9);
     pause(0.4);
     mouse(MOUSEEVENTF_LEFTUP);
     glide(p, (p.0 + 90, p.1 + 60), 0.4);

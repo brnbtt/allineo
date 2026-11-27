@@ -66,8 +66,8 @@ usual.
 
 ## Make it yours
 
-Open **allineo** from the Start menu (or click its tray icon) to choose what windows snap to and how
-firmly they hold. Changes save by themselves, and **restore mac feel** puts everything back to the
+Open **allineo** from the Start menu (or click its tray icon) to choose what windows stop at and how
+firmly they hold. Changes save by themselves, and **reset to mac feel** puts everything back to the
 macOS defaults.
 
 <p align="center">

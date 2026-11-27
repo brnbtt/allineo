@@ -53,7 +53,7 @@ const ROW_HEIGHT: f32 = 46.0;
 const FOOTER_BUTTON: f32 = 40.0;
 /// How long the "installed ✓" pill stays before the footer settles.
 const DONE_PILL_SECS: f64 = 1.6;
-/// Measured height with every row showing except "restore mac feel".
+/// Measured height with every row showing except "reset to mac feel".
 const HEIGHT: f32 = 856.0;
 
 type Outcome = Arc<Mutex<Option<Result<(), String>>>>;
@@ -165,14 +165,14 @@ impl SettingsApp {
                     ui.add_space(4.0);
                     ui.spacing_mut().item_spacing.y = 0.0;
                     ui.label(RichText::new(APP).size(25.0).family(semibold()).color(TEXT));
-                    ui.label(RichText::new("windows snap together, just like on a mac").size(13.0).color(TEXT_2));
+                    ui.label(RichText::new("windows line up as you drag, like on a mac").size(13.0).color(TEXT_2));
                 });
             },
             |ui| {
                 // Centered against the 52 pt logo, in a slot just big enough for the switch.
                 ui.allocate_ui_with_layout(Vec2::new(38.0, 52.0), Layout::top_down(Align::Min), |ui| {
                     ui.add_space(15.0);
-                    let tip = if self.cfg.enabled { "pause" } else { "resume" };
+                    let tip = if self.cfg.enabled { "on · click to pause" } else { "paused · click to turn on" };
                     theme::toggle(ui, &mut self.cfg.enabled).on_hover_text(tip);
                 });
             },
@@ -214,16 +214,20 @@ impl SettingsApp {
 
     fn settings(&mut self, ui: &mut egui::Ui) {
         let c = &mut self.cfg;
-        theme::caption(ui, "snap to");
+        theme::caption(ui, "windows stop at");
         theme::group(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            Self::toggle_row(ui, RowGlyph::OtherWindows, "other windows", "side by side", &mut c.other_windows);
+            Self::toggle_row(ui, RowGlyph::OtherWindows, "other windows", "side by side, no gap", &mut c.other_windows);
             theme::hairline(ui);
-            Self::toggle_row(ui, RowGlyph::Matching, "matching edges", "line up tops and sides", &mut c.matching_edges);
+            Self::toggle_row(
+                ui,
+                RowGlyph::Matching,
+                "matching edges",
+                "lines up tops and sides",
+                &mut c.matching_edges,
+            );
             theme::hairline(ui);
             Self::toggle_row(ui, RowGlyph::Screen, "screen edges", "and the taskbar", &mut c.screen_edges);
-            theme::hairline(ui);
-            Self::toggle_row(ui, RowGlyph::Resize, "resizing", "edges stop at neighbours", &mut c.resizing);
         });
 
         ui.add_space(16.0);
@@ -233,7 +237,7 @@ impl SettingsApp {
             Self::row(
                 ui,
                 RowGlyph::Hold,
-                |ui| Self::label(ui, "hold", "push to break free"),
+                |ui| Self::label(ui, "resistance", "before it lets go"),
                 |ui| {
                     let (less, more) =
                         theme::stepper(ui, &format!("{} px", c.hold), "lets go sooner", "holds on longer");
@@ -246,30 +250,32 @@ impl SettingsApp {
                 },
             );
             theme::hairline(ui);
-            Self::toggle_row(ui, RowGlyph::Flick, "fast flicks", "pass straight through", &mut c.fast_flicks_pass);
+            Self::toggle_row(ui, RowGlyph::Resize, "resizing", "edges stop too", &mut c.resizing);
             theme::hairline(ui);
-            Self::toggle_row(ui, RowGlyph::Key, "hold ctrl", "to drag freely", &mut c.ctrl_bypass);
+            Self::toggle_row(ui, RowGlyph::Flick, "quick moves", "go straight past edges", &mut c.fast_flicks_pass);
+            theme::hairline(ui);
+            Self::toggle_row(ui, RowGlyph::Key, "hold ctrl", "to move a window freely", &mut c.ctrl_bypass);
             if !c.feels_like_mac() {
                 theme::hairline(ui);
-                if theme::action_row(ui, ROW_HEIGHT, RowGlyph::Restore, "restore mac feel").clicked() {
+                if theme::action_row(ui, ROW_HEIGHT, RowGlyph::Restore, "reset to mac feel").clicked() {
                     c.restore_mac_feel();
                 }
             }
         });
 
         ui.add_space(16.0);
-        theme::caption(ui, "background");
+        theme::caption(ui, "app");
         theme::group(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             Self::toggle_row(
                 ui,
                 RowGlyph::Startup,
                 "start with windows",
-                "stay on after restarts",
+                "on every time you sign in",
                 &mut c.start_with_windows,
             );
             theme::hairline(ui);
-            Self::toggle_row(ui, RowGlyph::Tray, "tray icon", "pause or open settings", &mut c.tray_icon);
+            Self::toggle_row(ui, RowGlyph::Tray, "tray icon", "quick pause and settings", &mut c.tray_icon);
         });
     }
 
@@ -412,7 +418,7 @@ impl eframe::App for SettingsApp {
             })
             .inner;
 
-        // Fit the window to its content ("restore mac feel" comes and goes).
+        // Fit the window to its content ("reset to mac feel" comes and goes).
         let wanted = (content + 2.0 * 22.0 - 8.0).round();
         if (wanted - self.height).abs() > 1.0 {
             self.height = wanted;

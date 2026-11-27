@@ -296,7 +296,7 @@ pub fn row_glyph(ui: &mut Ui, glyph: RowGlyph, ink: Color32) {
     }
 }
 
-/// A whole-width clickable row (used for "restore mac feel"): brightens on hover.
+/// A whole-width clickable row (used for "reset to mac feel"): brightens on hover.
 pub fn action_row(ui: &mut Ui, height: f32, glyph: RowGlyph, text: &str) -> Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
     let hovered = response.hovered();

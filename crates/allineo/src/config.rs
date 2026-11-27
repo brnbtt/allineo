@@ -34,8 +34,8 @@ pub struct Config {
 pub const HOLD_STEPS: [u32; 10] = [6, 8, 12, 16, 20, 26, 32, 40, 50, 60];
 
 /// Bumped whenever the built-in feel changes. 1: hold 20, reach 8 (v0.1.0). 2: hold 12, reach 6,
-/// fading with speed.
-const DEFAULTS: u32 = 2;
+/// fading with speed. 3: reach 0 (no pull, the window hits a wall like on a Mac).
+const DEFAULTS: u32 = 3;
 
 impl Default for Config {
     fn default() -> Self {
@@ -75,15 +75,18 @@ impl Config {
 
     pub fn normalized(mut self) -> Self {
         // Files from before a change of the built-in feel: move untouched values to the new ones,
-        // so updating brings the new feel without anyone opening the settings. Values someone
-        // picked themselves are kept.
+        // so updating brings the new feel without anyone opening the settings. A hold someone
+        // picked themselves is kept; `reach` was never in the settings window, so it always moves.
+        let d = Config::default();
         if self.defaults < 2 && (self.hold, self.reach) == (20, 8) {
-            let d = Config::default();
-            (self.hold, self.reach) = (d.hold, d.reach);
+            self.hold = d.hold;
+        }
+        if self.defaults < 3 {
+            self.reach = d.reach;
         }
         self.defaults = DEFAULTS;
         self.hold = self.hold.clamp(HOLD_STEPS[0], 200);
-        self.reach = self.reach.clamp(1, 40).min(self.hold.saturating_sub(1).max(1));
+        self.reach = self.reach.min(40).min(self.hold - 1);
         self
     }
 
@@ -185,10 +188,16 @@ mod tests {
         // Someone who picked their own hold keeps it.
         let picked = r#"{"hold": 40, "reach": 8}"#;
         let c = serde_json::from_str::<Config>(picked).unwrap().normalized();
-        assert_eq!((c.hold, c.reach), (40, 8));
+        assert_eq!(c.hold, 40);
+
+        // Written by the previous update (hold 12, reach 6): the pull goes away.
+        let v2 = r#"{"hold": 12, "reach": 6, "defaults": 2}"#;
+        let c = serde_json::from_str::<Config>(v2).unwrap().normalized();
+        assert_eq!(c.reach, 0);
+        assert!(c.feels_like_mac());
 
         // Once upgraded, choosing 20 again sticks.
-        let chosen = r#"{"hold": 20, "reach": 8, "defaults": 2}"#;
+        let chosen = r#"{"hold": 20, "reach": 0, "defaults": 3}"#;
         let c = serde_json::from_str::<Config>(chosen).unwrap().normalized();
         assert_eq!(c.hold, 20);
     }

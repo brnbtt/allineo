@@ -4,8 +4,10 @@
 //! line it jumps onto it, in either direction. macOS behaves like a
 //! *detent* instead:
 //!
-//! * the window moves freely until one of its edges actually reaches a line
-//!   (a small `catch_distance` lets slow approaches land exactly on it);
+//! * the window follows the cursor exactly until one of its edges actually
+//!   reaches a line, then stops there like it hit a wall (an optional
+//!   `catch_distance` would pull it onto lines it gets close to; macOS
+//!   doesn't, so the default is 0);
 //! * it then stays put while the cursor keeps pushing, until the cursor has
 //!   travelled the hold distance past the line, at which point the window
 //!   jumps back under the cursor and continues;
@@ -519,6 +521,20 @@ mod tests {
         assert!(back.iter().filter(|(p, _)| *p >= 1616).all(|(_, a)| *a == 1620));
         // ... and follows the cursor as soon as it's back on the inside.
         assert!(back.iter().filter(|(p, _)| *p < 1616).all(|(p, a)| p == a));
+    }
+
+    #[test]
+    fn no_pull_by_default_window_hits_a_wall() {
+        // Creeping toward the screen edge 1 px at a time: the window never gets ahead of the
+        // pointer, and stops exactly when its edge reaches the line (left == 1620).
+        let mut s = Session::new(&[], &[monitor()], Config::DEFAULT);
+        for (p, a) in drag_x(&mut s, at(1600, 100, 300, 200), 1630, 1, 16.0) {
+            if p <= 1620 {
+                assert_eq!(a, p, "follows the pointer exactly until contact (p={p})");
+            } else {
+                assert_eq!(a, 1620, "stops at the edge (p={p})");
+            }
+        }
     }
 
     #[test]

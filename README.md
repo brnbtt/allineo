@@ -43,8 +43,8 @@ learn, your windows just behave.
 
 ### 1. Drag a window toward another
 
-As the edges meet, the window snaps flush against its neighbour: no gap, no overlap. Screen edges
-and the taskbar work the same way.
+As the edges meet, the window stops flush against its neighbour, as if it hit a wall: no gap, no
+overlap, and no jump. Screen edges and the taskbar work the same way.
 
 ### 2. Keep pushing, or pull back
 

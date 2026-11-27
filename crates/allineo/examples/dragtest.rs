@@ -243,7 +243,13 @@ fn run_test(unaware: bool, chrome: bool, by_tab: bool, existing: Option<HWND>) {
         held.len() as i32 * step,
         free_after
     );
-    let ok = held.len() as i32 * step >= 10 && free_after;
+    // On a Mac the window is never pulled ahead of the pointer: it hits a wall at the edge.
+    // Relative to where the window sat against the pointer shortly before the edge (Chrome's own
+    // tab drag runs a couple of pixels ahead of the pointer all the way).
+    let offset = trace.iter().rev().find(|(d, _)| *d <= gap - 30).map_or(0, |(d, r)| r - (fa.right + d));
+    let ahead = trace.iter().filter(|(d, r)| *d > gap - 30 && *r > fa.right + d + offset + 1).count();
+    println!("samples where the window got ahead of the pointer (pulled onto the edge): {ahead}");
+    let ok = held.len() as i32 * step >= 10 && free_after && ahead == 0;
     println!("{}", if ok { "PASS" } else { "FAIL" });
 
     if existing.is_some() {

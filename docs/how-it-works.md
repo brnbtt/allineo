@@ -8,7 +8,7 @@ engine (`crates/allineo-core/src/engine.rs`) implements:
 
 | | AquaMagnet | allineo (macOS-like) |
 |---|---|---|
-| Approaching an edge | Pulled in from N px away | Moves freely until it gets close (6 px catch zone), then lands exactly on it |
+| Approaching an edge | Pulled in from N px away | Follows the pointer exactly and stops when its edge touches, like hitting a wall: no pull, as on a Mac |
 | Pushing past it | Released after N px | **Held** until the pointer is `hold` px past the edge (12 px when placing a window slowly, less the faster you push), then the window jumps back under the pointer |
 | Pulling back | Held for N px | Released immediately |
 | Quick moves | Optional threshold | Pass straight through (above 1500 px/s) |
@@ -22,6 +22,11 @@ cursor it will go beyond the edge"*. So the hold is light and fades with speed: 
 1500 px/s)²)`. Placing a window slowly gets a firm stop, an ordinary move only a slight bump, and a
 quick move none, which also keeps long drags from stuttering over every edge they cross. Speed is
 measured over the last 60 ms, since mouse events can arrive every millisecond.
+
+There is also no pull. A window creeping toward an edge on a Mac doesn't jump onto it when it gets
+close; it follows the pointer exactly and hits a wall when its edge gets there. `catch_distance`
+(the distance at which an edge would be pulled onto a line) is therefore 0 by default.
+`dragtest.exe` fails if the window ever gets ahead of the pointer before contact.
 
 The defaults (`Config::DEFAULT`) treat one macOS point as one pixel at 100% scaling, and are scaled
 per monitor. `config.json` records which set of defaults it was written with (`defaults`), so an

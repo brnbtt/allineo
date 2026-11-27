@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "allineo"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "allineo-core",
  "eframe",
@@ -48,11 +48,11 @@ dependencies = [
 
 [[package]]
 name = "allineo-core"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "allineo-hook"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "allineo-core",
  "windows-sys 0.61.2",

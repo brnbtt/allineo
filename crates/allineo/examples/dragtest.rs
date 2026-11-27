@@ -215,8 +215,10 @@ fn run_test(unaware: bool, chrome: bool, by_tab: bool, existing: Option<HWND>) {
     mouse(MOUSEEVENTF_LEFTDOWN);
     sleep(Duration::from_millis(150));
 
-    // ALLINEO_DRAG_STEP: pixels per 12 ms step (default 2, a slow, deliberate drag).
-    let step: i32 = std::env::var("ALLINEO_DRAG_STEP").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
+    // ALLINEO_DRAG_STEP: pixels per 12 ms step. The default (6, 500 px/s) is a deliberate push that
+    // should get through; 2 or less is a creep that the wall must never let through.
+    let step: i32 = std::env::var("ALLINEO_DRAG_STEP").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
+    let creep = step <= 2;
     let mut trace = Vec::new();
     let total = gap + 80;
     let mut dx = 0;
@@ -232,7 +234,10 @@ fn run_test(unaware: bool, chrome: bool, by_tab: bool, existing: Option<HWND>) {
     // DPI-unaware windows can only be placed in scale-factor steps (1.5px at
     // 150%), so allow being one pixel off.
     let held: Vec<_> = trace.iter().filter(|(d, r)| *d > gap && (*r - fb.left).abs() <= 1).collect();
-    let free_after = trace.last().is_some_and(|(d, r)| (*r - (fa.right + d)).abs() <= 2);
+    // Where the window sat against the pointer shortly before the edge: Chrome's own drag runs a
+    // few pixels ahead (tabs) or one step behind (title bar) all the way.
+    let offset = trace.iter().rev().find(|(d, _)| *d <= gap - 30).map_or(0, |(d, r)| r - (fa.right + d));
+    let free_after = trace.last().is_some_and(|(d, r)| (*r - (fa.right + d + offset)).abs() <= 2);
     println!("\ncursor dx -> A.right (B.left = {})", fb.left);
     for chunk in trace.chunks(10) {
         println!("{}", chunk.iter().map(|(d, r)| format!("{d:>4}:{r:<5}")).collect::<String>());
@@ -246,10 +251,14 @@ fn run_test(unaware: bool, chrome: bool, by_tab: bool, existing: Option<HWND>) {
     // On a Mac the window is never pulled ahead of the pointer: it hits a wall at the edge.
     // Relative to where the window sat against the pointer shortly before the edge (Chrome's own
     // tab drag runs a couple of pixels ahead of the pointer all the way).
-    let offset = trace.iter().rev().find(|(d, _)| *d <= gap - 30).map_or(0, |(d, r)| r - (fa.right + d));
     let ahead = trace.iter().filter(|(d, r)| *d > gap - 30 && *r > fa.right + d + offset + 1).count();
     println!("samples where the window got ahead of the pointer (pulled onto the edge): {ahead}");
-    let ok = held.len() as i32 * step >= 10 && free_after && ahead == 0;
+    let ok = if creep {
+        // The wall must still be holding at the end, 80 px past contact.
+        trace.last().is_some_and(|(_, r)| (*r - fb.left).abs() <= 1) && ahead == 0
+    } else {
+        held.len() as i32 * step >= 10 && free_after && ahead == 0
+    };
     println!("{}", if ok { "PASS" } else { "FAIL" });
 
     if existing.is_some() {

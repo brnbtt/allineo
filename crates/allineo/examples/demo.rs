@@ -384,7 +384,27 @@ fn direct(out: &str) {
     p = glide(p, (p.0 + (fb.left - fa.right) + push, p.1), 1.4);
     pause(0.6);
     // 2. Slide it up: its top lines up with the neighbour's.
-    p = glide(p, (p.0, p.1 - (fa.top - fb.top) - 14), 0.8);
+    let (to, secs) = ((p.0, p.1 - (fa.top - fb.top) - 6), 0.8);
+    let steps = (secs * 120.0) as i32;
+    let mut stalls = 0;
+    let mut last_top = frame(a).top;
+    let mut last_y = p.1;
+    for i in 1..=steps {
+        let t = i as f32 / steps as f32;
+        let e = t * t * (3.0 - 2.0 * t);
+        let y = (p.1 as f32 + (to.1 - p.1) as f32 * e).round() as i32;
+        unsafe { SetCursorPos(p.0, y) };
+        sleep(Duration::from_secs_f32(secs / steps as f32));
+        let top = frame(a).top;
+        // The window stood still although the pointer moved, before reaching the top line.
+        if top == last_top && y != last_y && top > fb.top && i > 2 && i < steps - 2 {
+            stalls += 1;
+        }
+        last_top = top;
+        last_y = y;
+    }
+    p = to;
+    println!("slide up: {stalls} stalls before the tops met (of {steps} steps)");
     pause(0.5);
     mouse(MOUSEEVENTF_LEFTUP);
     pause(0.3);
@@ -396,7 +416,7 @@ fn direct(out: &str) {
     pause(0.2);
     mouse(MOUSEEVENTF_LEFTDOWN);
     pause(0.1);
-    p = glide(p, (p.0, p.1 + (fb.bottom - fa.bottom) + 12), 0.9);
+    p = glide(p, (p.0, p.1 + (fb.bottom - fa.bottom) + 6), 0.9);
     pause(0.4);
     mouse(MOUSEEVENTF_LEFTUP);
     glide(p, (p.0 + 90, p.1 + 60), 0.4);

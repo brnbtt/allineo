@@ -11,9 +11,13 @@
 //! * it then stays put while the cursor keeps pushing, until the cursor has
 //!   travelled the hold distance past the line, at which point the window
 //!   jumps back under the cursor and continues;
-//! * the hold depends on speed: `resistance` when placing a window slowly,
-//!   less the faster you push, so a normal-speed move only feels a slight
-//!   bump ("a subtle snap, not a hard stick");
+//! * the hold depends on speed across the line: creeping into a real edge
+//!   (another window's side, the screen) never breaks through; an ordinary
+//!   push gets through after `resistance`, and the faster you push the
+//!   sooner it lets go ("a subtle snap, not a hard stick");
+//! * alignment lines (lining up tops and left sides while moving; any
+//!   matching edge while resizing) hold a little less and are never solid,
+//!   so a window can always slide past them;
 //! * pulling back the way you came releases it immediately;
 //! * moves faster than `fast_speed` pass straight through.
 //!
@@ -223,6 +227,8 @@ struct Candidate {
     /// Value the tracked coordinate must take for the edge to sit on the line.
     target: i32,
     key: Key,
+    /// A real edge (another window's side, the screen) rather than an alignment line.
+    wall: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -233,6 +239,15 @@ struct Lock {
     dir: i32,
     /// How far past the line the pointer already was when it was caught (fast approaches).
     overshoot: i32,
+    wall: bool,
+}
+
+/// How far the pointer may push past a caught line before the window breaks free, for walls and
+/// for alignment lines, at the pointer's current speed across the line.
+#[derive(Clone, Copy, Debug)]
+struct Hold {
+    wall: i32,
+    align: i32,
 }
 
 /// Detent state machine for one scalar coordinate.
@@ -249,15 +264,13 @@ impl Detent {
         v
     }
 
-    /// `hold` is how far the pointer may push past a caught line before the window breaks free;
-    /// it shrinks as the pointer speeds up, so pushing harder breaks free sooner.
-    fn step(&mut self, proposed: i32, cands: &[Candidate], cfg: &Config, allow_new: bool, hold: i32) -> i32 {
+    fn step(&mut self, proposed: i32, cands: &[Candidate], cfg: &Config, allow_new: bool, hold: Hold) -> i32 {
         let prev = self.prev.replace(proposed);
 
         if let Some(l) = self.lock {
             let still_applies = cands.iter().any(|c| c.key == l.key);
             let pushed = (proposed - l.target) * l.dir;
-            let broke_through = pushed - l.overshoot > hold;
+            let broke_through = pushed - l.overshoot > if l.wall { hold.wall } else { hold.align };
             if still_applies && pushed >= -cfg.catch_distance && !broke_through {
                 return l.target;
             }
@@ -292,7 +305,7 @@ impl Detent {
         match best {
             Some((_, c)) => {
                 let overshoot = ((proposed - c.target) * dir).max(0);
-                self.lock = Some(Lock { key: c.key, target: c.target, dir, overshoot });
+                self.lock = Some(Lock { key: c.key, target: c.target, dir, overshoot, wall: c.wall });
                 c.target
             }
             None => proposed,
@@ -308,11 +321,12 @@ const SPEED_WINDOW_MS: f64 = 60.0;
 #[derive(Debug, Default)]
 struct Speed {
     samples: VecDeque<(i32, i32, f64)>,
-    value: f64,
+    /// (horizontal, vertical, overall)
+    value: (f64, f64, f64),
 }
 
 impl Speed {
-    fn update(&mut self, x: i32, y: i32, now_ms: f64) -> f64 {
+    fn update(&mut self, x: i32, y: i32, now_ms: f64) -> (f64, f64, f64) {
         self.samples.push_back((x, y, now_ms));
         // Keep the newest sample that is at least a window old as the reference point.
         while self.samples.len() > 2 && now_ms - self.samples[1].2 >= SPEED_WINDOW_MS {
@@ -322,11 +336,20 @@ impl Speed {
         let dt = now_ms - ot;
         if dt >= 1.0 {
             let (dx, dy) = ((x - ox) as f64, (y - oy) as f64);
-            self.value = (dx * dx + dy * dy).sqrt() * 1000.0 / dt;
+            let k = 1000.0 / dt;
+            self.value = (dx.abs() * k, dy.abs() * k, (dx * dx + dy * dy).sqrt() * k);
         }
         self.value
     }
 }
+
+/// Alignment lines (lining up tops or sides) hold this fraction of what a real edge holds, and
+/// are never solid: they're a convenience you can always slide past.
+const ALIGN_HOLD: f64 = 2.0 / 3.0;
+/// Creeping into a real edge slower than `fast_speed / SOLID_RATIO` (150 pt/s at the defaults)
+/// never breaks through: it takes a deliberate push. Just above that the edge is firmer than
+/// usual, easing to the normal resistance by 1.5× that speed.
+const SOLID_RATIO: f64 = 10.0;
 
 /// Snapping state for one drag (one move or one resize of one window).
 #[derive(Debug)]
@@ -357,30 +380,52 @@ impl Session {
         Self::new(s.windows(), s.monitors(), s.config)
     }
 
-    /// Updates the pointer speed; returns (too fast to catch anything new, current hold).
+    /// Updates the pointer speed; returns (too fast to catch anything new, hold for lines across
+    /// the x axis, hold for lines across the y axis).
     ///
-    /// macOS snapping is "a subtle snap, not a hard stick": placing a window slowly gets the full
-    /// hold, a normal-speed move only a slight bump, and a quick move goes straight past.
-    fn pace(&mut self, x: i32, y: i32, now_ms: f64) -> (bool, i32) {
-        let v = self.speed.update(x, y, now_ms);
+    /// macOS snapping is "a subtle snap, not a hard stick": a normal-speed push only feels a
+    /// slight bump and a quick move goes straight past. Each axis uses the speed *across* its
+    /// lines, so sliding along a neighbour never pulls a window away from it.
+    fn pace(&mut self, x: i32, y: i32, now_ms: f64) -> (bool, Hold, Hold) {
+        let (vx, vy, v) = self.speed.update(x, y, now_ms);
+        let limit = self.cfg.fast_speed as f64;
+        (limit > 0.0 && v > limit, self.hold(vx), self.hold(vy))
+    }
+
+    fn hold(&self, v: f64) -> Hold {
+        let r = self.cfg.resistance as f64;
         let limit = self.cfg.fast_speed as f64;
         if limit <= 0.0 {
-            return (false, self.cfg.resistance);
+            return Hold { wall: r as i32, align: (r * ALIGN_HOLD).round() as i32 };
         }
         let ratio = (v / limit).min(1.0);
-        let hold = (self.cfg.resistance as f64 * (1.0 - ratio * ratio)).round() as i32;
-        (v > limit, hold)
+        let fade = 1.0 - ratio * ratio;
+        let slow = limit / SOLID_RATIO;
+        let firm = if v <= slow { f64::INFINITY } else { (1.5 * slow / v).powi(2).max(1.0) };
+        Hold { wall: (r * fade * firm).min(1e6).round() as i32, align: (r * ALIGN_HOLD * fade).round() as i32 }
     }
 
     /// Collect the lines that currently apply, converted to values of the
     /// tracked coordinate (`pos + offset`).
-    fn collect(&mut self, sides: &[(Side, i32)], lo: i32, hi: i32) {
+    ///
+    /// While moving (not resizing), alignment only lines up tops and left sides: lining up
+    /// bottoms or right sides too would make a window sliding along a neighbour pause wherever
+    /// those happen to meet, a wall that isn't there.
+    fn collect(&mut self, sides: &[(Side, i32)], lo: i32, hi: i32, moving: bool) {
         let tolerance = self.cfg.catch_distance + self.cfg.resistance;
         self.buf.clear();
         for &(side, offset) in sides {
             for (i, line) in self.lines.by_side[side as usize].iter().enumerate() {
+                let end_alignment = line.rule == Rule::Adjacent && matches!(side, Side::Right | Side::Bottom);
+                if moving && end_alignment {
+                    continue;
+                }
                 if line.applies(lo, hi, tolerance) {
-                    self.buf.push(Candidate { target: line.pos + offset, key: Key { side, index: i as u32 } });
+                    self.buf.push(Candidate {
+                        target: line.pos + offset,
+                        key: Key { side, index: i as u32 },
+                        wall: line.rule == Rule::Overlap,
+                    });
                 }
             }
         }
@@ -389,7 +434,7 @@ impl Session {
     /// `proposed` is the visible frame the system wants to move the window
     /// to. Returns the frame to use instead.
     pub fn on_move(&mut self, proposed: Rect, now_ms: f64, bypass: bool) -> Rect {
-        let (fast, hold) = self.pace(proposed.left, proposed.top, now_ms);
+        let (fast, hold_x, hold_y) = self.pace(proposed.left, proposed.top, now_ms);
         if bypass {
             self.x.passthrough(proposed.left);
             self.y.passthrough(proposed.top);
@@ -397,11 +442,11 @@ impl Session {
         }
         let (w, h) = (proposed.width(), proposed.height());
 
-        self.collect(&[(Side::Top, 0), (Side::Bottom, -h)], proposed.left, proposed.right);
-        let y = self.y.step(proposed.top, &self.buf, &self.cfg, !fast, hold);
+        self.collect(&[(Side::Top, 0), (Side::Bottom, -h)], proposed.left, proposed.right, true);
+        let y = self.y.step(proposed.top, &self.buf, &self.cfg, !fast, hold_y);
 
-        self.collect(&[(Side::Left, 0), (Side::Right, -w)], y, y + h);
-        let x = self.x.step(proposed.left, &self.buf, &self.cfg, !fast, hold);
+        self.collect(&[(Side::Left, 0), (Side::Right, -w)], y, y + h, true);
+        let x = self.x.step(proposed.left, &self.buf, &self.cfg, !fast, hold_x);
 
         Rect::new(x, y, x + w, y + h)
     }
@@ -410,7 +455,7 @@ impl Session {
     pub fn on_size(&mut self, proposed: Rect, moving: u8, now_ms: f64, bypass: bool) -> Rect {
         let px = if moving & edges::LEFT != 0 { proposed.left } else { proposed.right };
         let py = if moving & edges::TOP != 0 { proposed.top } else { proposed.bottom };
-        let (fast, hold) = self.pace(px, py, now_ms);
+        let (fast, hold_x, hold_y) = self.pace(px, py, now_ms);
         let skip = bypass || self.cfg.flags & flags::RESIZE == 0;
 
         let mut out = proposed;
@@ -427,7 +472,8 @@ impl Session {
             let v = if skip {
                 self.sides[side as usize].passthrough(value)
             } else {
-                self.collect(&[(side, 0)], lo, hi);
+                self.collect(&[(side, 0)], lo, hi, false);
+                let hold = if matches!(side, Side::Left | Side::Right) { hold_x } else { hold_y };
                 self.sides[side as usize].step(value, &self.buf, &self.cfg, !fast, hold)
             };
             match side {
@@ -499,17 +545,59 @@ mod tests {
     #[test]
     fn sticks_to_screen_edge_then_breaks_free() {
         let mut s = Session::new(&[], &[monitor()], cfg());
-        // Window 300 wide: right edge reaches 1920 when left == 1620.
-        let trace = drag_x(&mut s, at(1500, 100, 300, 200), 1700, 2, 16.0);
+        // Window 300 wide: right edge reaches 1920 when left == 1620. 6 px every 16 ms is an
+        // ordinary, deliberate push (375 px/s): held for about `resistance`, then free.
+        let trace = drag_x(&mut s, at(1500, 100, 300, 200), 1700, 6, 16.0);
         for (p, a) in trace {
-            if p < 1616 {
-                assert_eq!(a, p, "free before the catch zone");
-            } else if p <= 1620 + 18 {
+            if p < 1620 {
+                assert_eq!(a, p, "free before the edge (p={p})");
+            } else if p <= 1632 {
                 assert_eq!(a, 1620, "held at the edge while pushing (p={p})");
             } else {
                 assert_eq!(a, p, "breaks free after the resistance (p={p})");
             }
         }
+    }
+
+    #[test]
+    fn creeping_into_an_edge_never_breaks_through() {
+        // Really slow pushes (60-125 px/s) against the screen edge: a solid wall.
+        for step in [1, 2] {
+            let mut s = Session::new(&[], &[monitor()], Config::DEFAULT);
+            let trace = drag_x(&mut s, at(1600, 100, 300, 200), 1800, step, 16.0);
+            assert!(trace.iter().all(|&(_, a)| a <= 1620), "never past the edge (step {step})");
+            assert_eq!(trace.last().unwrap().1, 1620, "still at the edge (step {step})");
+        }
+        // The same push at an ordinary pace gets through.
+        let mut s = Session::new(&[], &[monitor()], Config::DEFAULT);
+        let trace = drag_x(&mut s, at(1600, 100, 300, 200), 1800, 8, 16.0);
+        assert_eq!(trace.last().unwrap().1, 1800);
+    }
+
+    #[test]
+    fn alignment_lines_can_always_be_slid_past() {
+        // Docked against "photos", sliding up slowly: the tops line up (y = 130), and a slow
+        // slide keeps going past them, unlike a real edge. The window stays docked throughout.
+        let photos = Rect::new(660, 130, 1080, 530);
+        let mut s = Session::new(&[photos], &[], Config::DEFAULT);
+        let (w, h) = (360, 290);
+        let x = 660 - w + 6;
+        let mut t = 0.0;
+        for x in (120..=x).step_by(3) {
+            s.on_move(Rect::new(x, 250, x + w, 250 + h), t, false);
+            t += 16.0;
+        }
+        let mut stopped_at_top = false;
+        for y in (90..250).rev() {
+            let r = s.on_move(Rect::new(x, y, x + w, y + h), t, false);
+            t += 16.0;
+            assert_eq!(r.right, 660, "stays docked (y={y})");
+            stopped_at_top |= y < 130 && r.top == 130;
+            if y <= 110 {
+                assert_eq!(r.top, y, "slid past the alignment (y={y})");
+            }
+        }
+        assert!(stopped_at_top, "paused where the tops line up");
     }
 
     #[test]
@@ -521,6 +609,32 @@ mod tests {
         assert!(back.iter().filter(|(p, _)| *p >= 1616).all(|(_, a)| *a == 1620));
         // ... and follows the cursor as soon as it's back on the inside.
         assert!(back.iter().filter(|(p, _)| *p < 1616).all(|(p, a)| p == a));
+    }
+
+    #[test]
+    fn sliding_along_a_neighbour_has_no_false_wall() {
+        // The README demo: "notes" docked against the left side of "photos", then slid up until
+        // their tops line up. Its bottom passes the neighbour's bottom on the way; that must not
+        // hold it up. It should follow the pointer until the tops meet.
+        let photos = Rect::new(660, 130, 1080, 530);
+        let cfg = Config::DEFAULT;
+        let mut s = Session::new(&[photos], &[], cfg);
+        let (w, h) = (360, 290);
+        let mut t = 0.0;
+        // Dock: slide right until the right edge is 6 px past photos.left (held there).
+        let mut x = 120;
+        while x < 660 - w + 6 {
+            x += 3;
+            s.on_move(Rect::new(x, 250, x + w, 250 + h), t, false);
+            t += 16.0;
+        }
+        // Slide up slowly, past the point where the bottoms line up (y = 240), to the tops.
+        for y in (130..250).rev() {
+            let r = s.on_move(Rect::new(x, y, x + w, y + h), t, false);
+            t += 16.0;
+            assert_eq!(r.right, 660, "stays docked against photos (y={y})");
+            assert_eq!(r.top, y, "follows the pointer with no false wall (y={y})");
+        }
     }
 
     #[test]
@@ -545,10 +659,10 @@ mod tests {
             let trace = drag_x(&mut s, at(1500, 100, 300, 200), 1700, step, ms);
             trace.iter().filter(|&&(p, a)| p > 1620 && a == 1620).map(|&(p, _)| p - 1620).max().unwrap_or(0)
         };
-        let slow = held_for(2, 16.0); // 125 px/s: placing a window
+        let ordinary = held_for(6, 16.0); // 375 px/s: a deliberate push
         let medium = held_for(16, 16.0); // 1000 px/s: an ordinary move
-        assert_eq!(slow, 18, "full hold when slow");
-        assert!(medium > 0 && medium < slow, "a lighter bump at normal speed ({medium} px)");
+        assert_eq!(ordinary, 12, "about the full resistance");
+        assert!(medium > 0 && medium < ordinary, "a lighter bump at normal speed ({medium} px)");
     }
 
     #[test]

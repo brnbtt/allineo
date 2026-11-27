@@ -49,9 +49,9 @@ overlap, and no jump. Screen edges and the taskbar work the same way.
 ### 2. Keep pushing, or pull back
 
 Keep pushing and it holds for a moment, then lets go and follows your pointer again. Like on a Mac,
-it's a subtle snap, not a hard stick: the faster you push, the sooner it lets go. Pull back and it
-lets go straight away. Fling a window quickly and it flies straight past: only deliberate moves
-snap.
+it's a subtle snap, not a hard stick: the faster you push, the sooner it lets go, and if you just
+creep into an edge it stays put. Pull back and it lets go straight away. Fling a window quickly and
+it flies straight past: only deliberate moves snap.
 
 ### 3. Line them up
 
